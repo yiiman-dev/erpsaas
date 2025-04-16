@@ -1,35 +1,70 @@
 FROM php:8.3-fpm
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+WORKDIR /var/www/html
+
+RUN apt-get update -y  \
+    && apt-get install -y \
     git \
-    curl \
-    libpng-dev \
-    libonig-dev \
-    libxml2-dev \
     zip \
     unzip \
-    npm \
+    curl \
+    jq \
+    sed \
+    cron \
+    libpng-dev \
     libzip-dev \
-    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip intl
+    libjpeg-dev \
+    libfreetype6-dev \
+    libonig-dev \
+    libxml2-dev \
+    libpq-dev \
+    zlib1g-dev \
+    libfreetype6-dev \
+    libjpeg62-turbo-dev \
+    libicu-dev \
+    openssl \
+    nginx \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j$(nproc) \
+    gd  \
+    intl  \
+    pdo  \
+    pgsql \
+    pdo_pgsql  \
+    zip  \
+    bcmath  \
+    mbstring  \
+    xml \
+    exif \
+    pcntl \
+    sockets \
+    xml \
+    dom
 
-# Install Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+COPY --from=mlocati/php-extension-installer:2.5.0 /usr/bin/install-php-extensions /usr/local/bin/
 
-# Set working directory
-WORKDIR /var/www
+RUN install-php-extensions \
+    amqp \
+    json \
+    tokenizer \
+    zlib 
+ #   swoole 
+#    grpc
 
-# Copy project files
-COPY . .
+COPY --from=composer:2.7.9 /usr/bin/composer /usr/bin/composer
 
-# Install PHP dependencies
-RUN composer update
+COPY composer.json composer.lock ./
 
-# Set permissions
-RUN chown -R www-data:www-data /var/www \
-    && chmod -R 755 /var/www
+RUN composer install --no-autoloader
 
-# Expose port
-EXPOSE 9000
+COPY --chown=root:root . ./
 
-CMD ["php-fpm"]
+RUN composer dump-autoload --optimize
+
+RUN chmod -R 777 ./storage
+
+EXPOSE 5050
+
+COPY config/nginx.conf /etc/nginx/conf.d/default.conf
+
+ENTRYPOINT ["sh", "-c", "exec ./entrypoint.sh"]
